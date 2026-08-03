@@ -1,0 +1,32 @@
+{
+  "name": "callmate-ai-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CallMate AI backend — Express REST API + Socket.IO WebRTC signaling server",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@deepgram/sdk": "^5.5.0",
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "firebase-admin": "^14.2.0",
+    "mediasoup": "^3.21.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7",
+    "socket.io-client": "^4.8.3"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}
