@@ -19,7 +19,7 @@
  * `setToggle`/`isToggleActive` below, used only for the "Add AI Assistant"
  * tile's own on/off UI state (`sttHandler.js`'s `ai:status`/`ai:status:query`).
  * Whether Gemini actually replies to a chat message is gated on an
- * "@callMetaAi" mention (`chatHandler.js`), independent of both of these.
+ * "@dashLumeAI" mention (`chatHandler.js`), independent of both of these.
  *
  * In-memory only, same posture as `roomManager`/`sfuRoomState` — no
  * persistence yet. `contextManager.js` reads `getTranscript()` for its

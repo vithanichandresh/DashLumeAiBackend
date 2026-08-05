@@ -12,8 +12,8 @@ const AI_SENDER_NAME = 'AI Assistant';
 
 // Gemini only replies when explicitly mentioned — not on every chat message
 // while some toggle happens to be on. Case-insensitive, no word-boundary
-// requirement (matches "@callMetaAi", "@callmetaai", "hey @CallMetaAI can you...").
-const AI_MENTION_REGEX = /@callmetaai/i;
+// requirement (matches "@dashLumeAI", "@dashlumeai", "hey @DashLumeAI can you...").
+const AI_MENTION_REGEX = /@dashlumeai/i;
 
 /**
  * In-call text chat — piggybacks on the Socket.IO room a client already
@@ -36,7 +36,7 @@ const AI_MENTION_REGEX = /@callmetaai/i;
  * logs but never blocks/breaks the live broadcast.
  *
  * **Revised**: Gemini replies only when a chat message mentions
- * "@callMetaAi" (`AI_MENTION_REGEX`), regardless of whether "Add AI
+ * "@dashLumeAI" (`AI_MENTION_REGEX`), regardless of whether "Add AI
  * Assistant" was ever toggled on — the mention alone is enough. The
  * response is grounded in the rolling transcript context
  * (`ai/contextManager.js`, reads `aiSession.getTranscript`, which now

@@ -8,7 +8,7 @@ const aiSession = require('../ai/aiSession');
  * longer gates whether capture runs at all, only the AI Assistant tile's
  * own on/off UI state (`aiSession.setToggle`/`isToggleActive`). Whether
  * Gemini actually replies to a chat message is gated separately, on an
- * "@callMetaAi" mention (`chatHandler.js`), independent of this toggle.
+ * "@dashLumeAI" mention (`chatHandler.js`), independent of this toggle.
  *
  * Closed Captioning is a second, independent toggle on the same underlying
  * capture pipeline — `sttSession.wantStt`/`unwantStt` refcount by source

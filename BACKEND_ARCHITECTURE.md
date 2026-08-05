@@ -67,7 +67,7 @@ backend/
 │   ├── sockets/                Socket.IO event handlers — the real "controllers" of this app
 │   │   ├── signalingHandler.js  room join/leave/end, presence broadcasts
 │   │   ├── sfuHandler.js        WebRTC transport/produce/consume RPCs
-│   │   ├── chatHandler.js       in-call text chat + "@callMetaAi" trigger
+│   │   ├── chatHandler.js       in-call text chat + "@dashLumeAI" trigger
 │   │   └── sttHandler.js        AI-assistant / captions on-off toggles
 │   ├── stt/
 │   │   └── sttSession.js        captures audio from mediasoup, feeds Deepgram, broadcasts captions
@@ -339,7 +339,7 @@ empty — so turning off Captions doesn't kill transcription if AI Assistant
 
 ---
 
-## 7. AI chat replies (`@callMetaAi`)
+## 7. AI chat replies (`@dashLumeAI`)
 
 ```mermaid
 sequenceDiagram
@@ -351,11 +351,11 @@ sequenceDiagram
     participant Gem as geminiOrchestrator
     participant API as Gemini API
 
-    U->>CH: "chat:message" {text: "@callMetaAi what did we decide?"}
+    U->>CH: "chat:message" {text: "@dashLumeAI what did we decide?"}
     CH->>IO: broadcast "chat:message" to room (immediately)
     CH->>FS: persist message (fire-and-forget)
     CH->>AI: addSegment() — folds the human message into the transcript too
-    Note over CH: regex /@callmetaai/i matched → trigger AI reply
+    Note over CH: regex /@dashlumeai/i matched → trigger AI reply
     CH->>Gem: generateResponse(roomId, text)
     Gem->>CTX: formatWindow(roomId) — last 400 transcript lines
     Gem->>API: generateContent(prompt + history + googleSearch tool)
