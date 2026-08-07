@@ -68,128 +68,142 @@ function buildSdp({ port, payloadType, clockRate, channels }) {
   ].join('\n');
 }
 
-/** Starts capturing one audio producer. No-op (returns null) if the room/producer no longer exists. */
+/**
+ * Starts capturing one audio producer. No-op (returns null) if the
+ * room/producer no longer exists, OR if any step below fails — every
+ * step from `createPlainTransport` through `waitForOpen` is a real
+ * network/native call that can reject (Deepgram outage, port exhaustion,
+ * mediasoup native error, etc.). Wrapped in one try/catch so a failure
+ * here never propagates up into `startForRoom`/`handleNewProducer` — an
+ * uncaught throw there would permanently mark the room as "active" in
+ * `activeRooms` (set before this is ever called) with no working
+ * sessions and no way to retry short of the room ending. Any transport
+ * already created before the failure is explicitly closed instead of
+ * left dangling.
+ */
 async function startCapture(roomId, peerId, producerId) {
   const room = sfuRoomState.getRoom(roomId);
   if (!room) return null;
 
   const rtpPort = allocatePort();
+  let transport;
+  let sdpPath;
 
-  const transport = await room.router.createPlainTransport({
-    listenIp: '127.0.0.1',
-    rtcpMux: true,
-    comedia: false,
-  });
-
-  let consumer;
   try {
-    consumer = await transport.consume({
+    transport = await room.router.createPlainTransport({
+      listenIp: '127.0.0.1',
+      rtcpMux: true,
+      comedia: false,
+    });
+
+    const consumer = await transport.consume({
       producerId,
       rtpCapabilities: room.router.rtpCapabilities,
       paused: true,
     });
+
+    await transport.connect({ ip: '127.0.0.1', port: rtpPort });
+
+    const displayName = roomManager.getPeer(roomId, peerId)?.displayName ?? 'Guest';
+
+    const codec = consumer.rtpParameters.codecs[0];
+    sdpPath = path.join(os.tmpdir(), `stt-${roomId}-${peerId}-${Date.now()}.sdp`);
+    fs.writeFileSync(
+      sdpPath,
+      buildSdp({
+        port: rtpPort,
+        payloadType: codec.payloadType,
+        clockRate: codec.clockRate,
+        channels: codec.channels || 2,
+      })
+    );
+
+    const ffmpeg = spawn('ffmpeg', [
+      '-protocol_whitelist', 'file,udp,rtp',
+      '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
+      '-i', sdpPath,
+      '-f', 's16le',
+      '-ar', '16000',
+      '-ac', '1',
+      'pipe:1',
+    ]);
+    ffmpeg.on('error', (error) => {
+      console.error(`[STT][${roomId}][${peerId}] ffmpeg spawn error:`, error.message);
+    });
+    ffmpeg.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        console.error(`[STT][${roomId}][${peerId}] ffmpeg exited with code ${code}`);
+      }
+    });
+
+    const connection = await deepgram.listen.v1.connect({
+      model: 'nova-2',
+      encoding: 'linear16',
+      sample_rate: 16000,
+      channels: 1,
+      punctuate: true,
+      interim_results: true,
+    });
+
+    connection.on('error', (error) => {
+      console.error(`[STT][${roomId}][${peerId}] Deepgram error:`, error.message || error);
+    });
+    connection.on('message', (data) => {
+      if (data.type !== 'Results' || !data.is_final) return;
+      const transcript = data.channel?.alternatives?.[0]?.transcript;
+      if (!transcript) return;
+
+      console.log(`[STT][${roomId}][${peerId}]`, transcript);
+      aiSession.addSegment(roomId, { peerId, displayName, text: transcript });
+      io?.to(roomId).emit('transcript:segment', { peerId, displayName, text: transcript, at: Date.now() });
+
+      // Durable log, independent of the realtime broadcast above — same
+      // posture as chatHandler.js's message persistence: fire-and-forget,
+      // a write failure only logs and never blocks/breaks the live path.
+      getFirestore()
+        .collection('meetings')
+        .doc(roomId)
+        .collection('transcript')
+        .add({ peerId, displayName, text: transcript, at: FieldValue.serverTimestamp() })
+        .catch((error) => console.error(`[STT][${roomId}][${peerId}] Failed to persist transcript segment:`, error));
+    });
+
+    connection.connect();
+    await connection.waitForOpen();
+
+    // ffmpeg's stdout can still emit an already-buffered chunk asynchronously
+    // right after kill() — without this guard that chunk hits a closed
+    // Deepgram socket, throws inside the stream's 'data' handler, and (being
+    // uncaught) takes down the *entire* Node process, not just this session.
+    let stopped = false;
+    ffmpeg.stdout.on('data', (chunk) => {
+      if (stopped) return;
+      try {
+        connection.sendMedia(chunk);
+      } catch (error) {
+        console.error(`[STT][${roomId}][${peerId}] sendMedia failed:`, error.message);
+      }
+    });
+
+    await consumer.resume();
+
+    return {
+      stop() {
+        if (stopped) return;
+        stopped = true;
+        ffmpeg.kill('SIGKILL');
+        connection.close();
+        transport.close(); // cascades to close the consumer too
+        fs.unlink(sdpPath, () => {});
+      },
+    };
   } catch (error) {
-    console.error(`[STT][${roomId}][${peerId}] consume failed:`, error.message);
-    transport.close();
+    console.error(`[STT][${roomId}][${peerId}] startCapture failed:`, error.message);
+    transport?.close();
+    if (sdpPath) fs.unlink(sdpPath, () => {});
     return null;
   }
-
-  await transport.connect({ ip: '127.0.0.1', port: rtpPort });
-
-  const displayName = roomManager.getPeer(roomId, peerId)?.displayName ?? 'Guest';
-
-  const codec = consumer.rtpParameters.codecs[0];
-  const sdpPath = path.join(os.tmpdir(), `stt-${roomId}-${peerId}-${Date.now()}.sdp`);
-  fs.writeFileSync(
-    sdpPath,
-    buildSdp({
-      port: rtpPort,
-      payloadType: codec.payloadType,
-      clockRate: codec.clockRate,
-      channels: codec.channels || 2,
-    })
-  );
-
-  const ffmpeg = spawn('ffmpeg', [
-    '-protocol_whitelist', 'file,udp,rtp',
-    '-fflags', 'nobuffer',
-    '-flags', 'low_delay',
-    '-i', sdpPath,
-    '-f', 's16le',
-    '-ar', '16000',
-    '-ac', '1',
-    'pipe:1',
-  ]);
-  ffmpeg.on('error', (error) => {
-    console.error(`[STT][${roomId}][${peerId}] ffmpeg spawn error:`, error.message);
-  });
-  ffmpeg.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[STT][${roomId}][${peerId}] ffmpeg exited with code ${code}`);
-    }
-  });
-
-  const connection = await deepgram.listen.v1.connect({
-    model: 'nova-2',
-    encoding: 'linear16',
-    sample_rate: 16000,
-    channels: 1,
-    punctuate: true,
-    interim_results: true,
-  });
-
-  connection.on('error', (error) => {
-    console.error(`[STT][${roomId}][${peerId}] Deepgram error:`, error.message || error);
-  });
-  connection.on('message', (data) => {
-    if (data.type !== 'Results' || !data.is_final) return;
-    const transcript = data.channel?.alternatives?.[0]?.transcript;
-    if (!transcript) return;
-
-    console.log(`[STT][${roomId}][${peerId}]`, transcript);
-    aiSession.addSegment(roomId, { peerId, displayName, text: transcript });
-    io?.to(roomId).emit('transcript:segment', { peerId, displayName, text: transcript, at: Date.now() });
-
-    // Durable log, independent of the realtime broadcast above — same
-    // posture as chatHandler.js's message persistence: fire-and-forget,
-    // a write failure only logs and never blocks/breaks the live path.
-    getFirestore()
-      .collection('meetings')
-      .doc(roomId)
-      .collection('transcript')
-      .add({ peerId, displayName, text: transcript, at: FieldValue.serverTimestamp() })
-      .catch((error) => console.error(`[STT][${roomId}][${peerId}] Failed to persist transcript segment:`, error));
-  });
-
-  connection.connect();
-  await connection.waitForOpen();
-
-  // ffmpeg's stdout can still emit an already-buffered chunk asynchronously
-  // right after kill() — without this guard that chunk hits a closed
-  // Deepgram socket, throws inside the stream's 'data' handler, and (being
-  // uncaught) takes down the *entire* Node process, not just this session.
-  let stopped = false;
-  ffmpeg.stdout.on('data', (chunk) => {
-    if (stopped) return;
-    try {
-      connection.sendMedia(chunk);
-    } catch (error) {
-      console.error(`[STT][${roomId}][${peerId}] sendMedia failed:`, error.message);
-    }
-  });
-
-  await consumer.resume();
-
-  return {
-    stop() {
-      if (stopped) return;
-      stopped = true;
-      ffmpeg.kill('SIGKILL');
-      connection.close();
-      transport.close(); // cascades to close the consumer too
-      fs.unlink(sdpPath, () => {});
-    },
-  };
 }
 
 /** `stt:start` — captures every audio producer currently in the room. */
