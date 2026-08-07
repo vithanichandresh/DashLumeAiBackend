@@ -45,8 +45,12 @@ function attachStt(io) {
         const roomId = socket.data.roomId;
         if (!roomId) return callback?.({ error: 'Not in a room' });
 
-        aiSession.setToggle(roomId, true);
+        // Toggle only flips once capture actually confirmed started — doing
+        // this before the await meant a failed wantStt() left the toggle
+        // stuck "on" with no rollback, so ai:status:query disagreed with
+        // every other client (which never got an ai:status broadcast).
         await sttSession.wantStt(roomId, 'ai');
+        aiSession.setToggle(roomId, true);
         io.to(roomId).emit('ai:status', { active: true });
         callback?.({ started: true });
       } catch (error) {

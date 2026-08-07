@@ -20,9 +20,9 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
  * (transports/producers/consumers), since this is the single chokepoint
  * both explicit leave and disconnect funnel through.
  *
- *   client -> server  "room:join"   { roomId, displayName }
- *   server -> joiner   "room:joined" { peers: [{peerId, displayName, uid, isAudioMuted, isVideoMuted}] }
- *   server -> others   "peer:joined" { peerId, displayName, uid }
+ *   client -> server  "room:join"   { roomId, displayName, profileImageUrl }
+ *   server -> joiner   "room:joined" { peers: [{peerId, displayName, profileImageUrl, uid, isAudioMuted, isVideoMuted}] }
+ *   server -> others   "peer:joined" { peerId, displayName, profileImageUrl, uid }
  *
  *   client -> server  "room:leave"  {}
  *   server -> others   "peer:left"   { peerId }
@@ -58,11 +58,12 @@ function attachSignaling(io) {
   });
 
   io.on('connection', (socket) => {
-    socket.on('room:join', ({ roomId, displayName }) => {
+    socket.on('room:join', ({ roomId, displayName, profileImageUrl }) => {
       if (!roomId) return;
 
       const peerInfo = {
         displayName: displayName || 'Guest',
+        profileImageUrl: profileImageUrl || '',
         uid: socket.data.uid,
         isAudioMuted: false,
         isVideoMuted: false,
@@ -160,7 +161,14 @@ async function leaveCurrentRoom(io, socket) {
 
   socket.to(roomId).emit('peer:left', { peerId: socket.id });
   socket.leave(roomId);
-  socket.data.roomId = null;
+  // Only clear if this socket hasn't already moved on to a different room
+  // while the async teardown above was in flight — a fast leave
+  // immediately followed by a join on the same persistent client socket
+  // can otherwise wipe out the newer room association, silently breaking
+  // every room-scoped event (chat/mute/sfu/stt) for the rest of that session.
+  if (socket.data.roomId === roomId) {
+    socket.data.roomId = null;
+  }
 
   // Last peer leaving naturally ends the meeting too, same as the explicit
   // host "end meeting" path below — just no one left to broadcast
@@ -191,8 +199,11 @@ async function endCurrentRoom(io, socket) {
 
   for (const s of socketsInRoom) {
     s.leave(roomId);
-    s.data.roomId = null;
+    // Same race guard as leaveCurrentRoom above.
+    if (s.data.roomId === roomId) {
+      s.data.roomId = null;
+    }
   }
 }
 
-module.exports = { attachSignaling };
+module.exports = { attachSignaling, finalizeMeetingSummary };
