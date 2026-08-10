@@ -2,11 +2,9 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const env = require('../config/env');
 
 /**
- * Day 19: post-call summary + action-item extraction. Runs once, over the
- * *full* accumulated transcript (`aiSession.getTranscript(roomId)`) at the
- * moment a meeting ends — unlike `geminiOrchestrator.js`'s rolling window,
- * this isn't bounded to the last `MAX_SEGMENTS`, since it only ever runs
- * once per meeting, not per chat message.
+ * Day 19: post-call summary + action-item extraction (2026-08-10: also a
+ * suggested meeting title). Runs once, over the *full* accumulated
+ * transcript, at the moment a meeting ends.
  */
 
 let genAI = null;
@@ -26,7 +24,8 @@ function buildPrompt(segments) {
   return [
     'You are summarizing a video call transcript for the meeting record.',
     'Read the full transcript below (spoken, transcribed live via STT — may contain transcription errors) and respond with ONLY a JSON object, no markdown code fences, no commentary, in exactly this shape:',
-    '{"summary": "2-4 sentence summary of what was discussed and decided", "actionItems": ["short action item", "..."]}',
+    '{"title": "3-6 word title naming the actual topic discussed", "summary": "2-4 sentence summary of what was discussed and decided", "actionItems": ["short action item", "..."]}',
+    'The title must be specific to what was actually discussed (e.g. "Q3 Launch Timeline Sync"), plain text, no quotes or trailing punctuation — never a generic label like "Team Meeting" or "Call Summary".',
     'If no clear action items were discussed, return an empty array for actionItems.',
     '',
     'Transcript:',
@@ -46,6 +45,9 @@ function parseResponse(text) {
   try {
     const parsed = JSON.parse(cleaned);
     return {
+      // Stripped of any stray wrapping quotes Gemini sometimes adds despite
+      // the prompt's "no quotes" instruction.
+      title: typeof parsed.title === 'string' ? parsed.title.trim().replace(/^["']+|["']+$/g, '') : '',
       summary: typeof parsed.summary === 'string' ? parsed.summary : '',
       actionItems: Array.isArray(parsed.actionItems)
         ? parsed.actionItems.filter((item) => typeof item === 'string')
@@ -54,7 +56,7 @@ function parseResponse(text) {
   } catch (error) {
     // Didn't come back as clean JSON — fall back to the raw text as the
     // summary rather than losing the response entirely.
-    return { summary: cleaned, actionItems: [] };
+    return { title: '', summary: cleaned, actionItems: [] };
   }
 }
 

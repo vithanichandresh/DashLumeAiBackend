@@ -120,14 +120,11 @@ function attachSignaling(io) {
 }
 
 /**
- * Day 19: post-call summary + action items. Fire-and-forget, called right
- * before `aiSession.clearRoom(roomId)` in both places a meeting can end
- * below — `getTranscript()` is read synchronously as the first thing this
- * does (before any `await`), so it always captures the transcript before
- * the caller clears it on the very next line, regardless of how long the
- * Gemini call/Firestore write that follows takes. No-op if there's no
- * transcript (nobody spoke — transcription itself now runs for every
- * meeting from `room:join`, regardless of "Add AI Assistant"/Captions).
+ * Day 19: post-call summary + action items (2026-08-10: also renames a
+ * still-default "Quick Meeting" title to the AI-generated one). Fire-and-
+ * forget, called right before `aiSession.clearRoom(roomId)` — `getTranscript()`
+ * runs synchronously first, so the transcript is always captured before the
+ * caller clears it. No-op if nobody spoke.
  */
 async function finalizeMeetingSummary(roomId) {
   const segments = aiSession.getTranscript(roomId);
@@ -137,11 +134,25 @@ async function finalizeMeetingSummary(roomId) {
     const result = await summaryGenerator.generateSummary(segments);
     if (!result) return;
 
-    await getFirestore().collection('meetings').doc(roomId).update({
+    const meetingRef = getFirestore().collection('meetings').doc(roomId);
+    const updateData = {
       summary: result.summary,
       actionItems: result.actionItems,
       summaryGeneratedAt: FieldValue.serverTimestamp(),
-    });
+    };
+
+    // Only rename a still-default "Quick Meeting" — never overwrite a title
+    // the host actually chose. Needs a read first since Firestore has no
+    // "update only if field still equals X" without a transaction, and this
+    // fire-and-forget path isn't worth one for a rename that's best-effort.
+    if (result.title) {
+      const snapshot = await meetingRef.get();
+      if (snapshot.exists && snapshot.data().title === 'Quick Meeting') {
+        updateData.title = result.title;
+      }
+    }
+
+    await meetingRef.update(updateData);
   } catch (error) {
     console.error(`[AI][${roomId}] Summary generation failed:`, error.message);
   }

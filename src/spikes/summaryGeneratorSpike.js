@@ -41,6 +41,10 @@ async function main() {
     console.error('FAIL: actionItems not an array');
     process.exit(1);
   }
+  if (typeof result.title !== 'string' || !result.title.length) {
+    console.error('FAIL: title missing/empty');
+    process.exit(1);
+  }
 
   console.log('PASS');
 }
