@@ -27,7 +27,7 @@ Server listens on `PORT` from `.env` (default 4000) — matches the Flutter app'
 - `src/middleware/authMiddleware.js` — Firebase ID token verification, shared by REST routes and the Socket.IO handshake
 - `src/routes/health.js` — `GET /health`, public
 - `src/routes/iceServers.js` — `GET /api/ice-servers`, protected, returns STUN/TURN config for the client's `RTCPeerConnection`
-- `src/sockets/signalingHandler.js` — WebRTC signaling protocol (room join/leave, offer/answer/ICE relay). Event names documented at the top of that file, aligned with `lib/core/network/socket_service.dart`'s existing `joinRoom`/`leaveRoom` helpers.
+- `src/rooms/signalingHandler.js` — WebRTC signaling protocol (room join/leave, offer/answer/ICE relay). Event names documented at the top of that file, aligned with `lib/core/network/socket_service.dart`'s existing `joinRoom`/`leaveRoom` helpers.
 - `src/rooms/roomManager.js` — in-memory registry of who's connected to each meeting's signaling room. Not persisted — a restart drops active rooms.
 
 ## Not done yet

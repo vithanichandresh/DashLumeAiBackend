@@ -58,15 +58,15 @@ backend/
 │   ├── routes/                 plain REST endpoints (Express)
 │   │   ├── health.js            GET /health
 │   │   └── iceServers.js        GET /api/ice-servers (STUN/TURN list, auth required)
-│   ├── rooms/                  "who is in this call" bookkeeping (presence only)
+│   ├── rooms/                  "who is in this call" — presence + its own socket handler
 │   │   ├── roomManager.js       in-memory Map: roomId -> Map<peerId, peerInfo>
-│   │   └── roomReaper.js        safety-net: force-closes rooms idle > 4h
-│   ├── sfu/                    the actual media (audio/video) routing engine
+│   │   ├── roomReaper.js        safety-net: force-closes rooms idle > 4h
+│   │   └── signalingHandler.js  room join/leave/end, presence broadcasts
+│   ├── sfu/                    the actual media (audio/video) routing engine + its socket handler
 │   │   ├── mediasoupWorker.js   one native mediasoup worker process for the app
-│   │   └── sfuRoomState.js      in-memory Map: roomId -> {router, peers(transports/producers/consumers)}
-│   ├── sockets/                Socket.IO event handlers — the real "controllers" of this app
-│   │   ├── signalingHandler.js  room join/leave/end, presence broadcasts
-│   │   ├── sfuHandler.js        WebRTC transport/produce/consume RPCs
+│   │   ├── sfuRoomState.js      in-memory Map: roomId -> {router, peers(transports/producers/consumers)}
+│   │   └── sfuHandler.js        WebRTC transport/produce/consume RPCs
+│   ├── sockets/                Socket.IO event handlers for concerns without their own feature folder
 │   │   ├── chatHandler.js       in-call text chat + "@dashLumeAI" trigger
 │   │   └── sttHandler.js        AI-assistant / captions on-off toggles
 │   ├── stt/
@@ -245,7 +245,7 @@ batteries/data). An SFU (Selective Forwarding Unit) means every phone sends
 its video **once**, to the server, and the server forwards it to everyone else.
 `mediasoup` is the SFU engine here.
 
-Core vocabulary used throughout `sfu/` and `sockets/sfuHandler.js`:
+Core vocabulary used throughout `sfu/` (including `sfu/sfuHandler.js`):
 
 | Term | What it means here |
 |---|---|
@@ -442,7 +442,7 @@ both transports.
 ## 10. Mental model summary
 
 - **Express** = two boring stateless HTTP endpoints. Not where the real app logic lives.
-- **Socket.IO handlers** (`sockets/*.js`) = the real controllers. Each file owns one concern (presence, media RPCs, chat, toggles).
+- **Socket.IO handlers** (`rooms/signalingHandler.js`, `sfu/sfuHandler.js`, `sockets/*.js`) = the real controllers. Each file owns one concern (presence, media RPCs, chat, toggles) and lives next to the state it manages where that state has its own folder.
 - **State lives in `Map`s, not a database.** `roomManager`, `sfuRoomState`, `aiSession`, `sttSession`'s `activeRooms`/`roomWanters` — all in-memory, all wiped on restart, all keyed by `roomId`.
 - **Firestore is the only durable store**, written to fire-and-forget alongside the live socket broadcasts (chat messages, transcript segments, end-of-call summary). A Firestore failure is logged, never blocks the live experience.
 - **mediasoup** is a separate concern from Socket.IO signaling: sockets negotiate *who* sends/receives what, but the actual audio/video bytes flow over raw RTP (UDP/TCP), not through Socket.IO at all.

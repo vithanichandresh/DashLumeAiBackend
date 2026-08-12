@@ -8,9 +8,9 @@ const { initFirebaseAdmin } = require('./config/firebaseAdmin');
 const { initMediasoupWorker } = require('./sfu/mediasoupWorker');
 const healthRoutes = require('./routes/health');
 const iceServersRoutes = require('./routes/iceServers');
-const { attachSignaling } = require('./sockets/signalingHandler');
+const { attachSignaling } = require('./rooms/signalingHandler');
 const { attachChat } = require('./sockets/chatHandler');
-const { attachSfu } = require('./sockets/sfuHandler');
+const { attachSfu } = require('./sfu/sfuHandler');
 const { attachStt } = require('./sockets/sttHandler');
 const roomReaper = require('./rooms/roomReaper');
 

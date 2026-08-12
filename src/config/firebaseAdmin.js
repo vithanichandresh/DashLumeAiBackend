@@ -20,10 +20,8 @@ function loadServiceAccount() {
 
 let initialized = false;
 
-// v14's modular API (getAuth()/getFirestore(), used by every other file that
-// needs Admin SDK access) resolves against the implicit default app once one
-// exists — callers never need this function's return value, just to have
-// called it first.
+// v14's modular API (getAuth()/getFirestore()) resolves against the implicit
+// default app once one exists — callers never need this function's return value.
 function initFirebaseAdmin() {
   if (initialized) return;
 

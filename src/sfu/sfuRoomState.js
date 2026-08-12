@@ -1,14 +1,8 @@
 const { getWorker } = require('./mediasoupWorker');
 
 /**
- * Per-meeting-room mediasoup state — separate from `rooms/roomManager.js`,
- * which only tracks *who's connected* (used by chat/participant presence).
- * This tracks the actual SFU resources: one Router per room, and per-peer
- * transports/producers/consumers.
- *
- * Router codecs: VP8 video + Opus audio only — the simplest interoperable
- * set. H264 was left out deliberately (real hardware-acceleration wins but
- * adds profile-level-id negotiation complexity not worth it for MVP).
+ * Per-room mediasoup state (Router + per-peer transports/producers/consumers)
+ * — separate from roomManager.js, which only tracks who's connected. Codecs: VP8 + Opus only, the simplest interoperable set for MVP.
  */
 const mediaCodecs = [
   { kind: 'audio', mimeType: 'audio/opus', clockRate: 48000, channels: 2 },

@@ -1,18 +1,10 @@
 /**
- * In-memory signaling room registry — one entry per active meeting call,
- * separate from the Firestore `meetings` collection (which the Flutter
- * client writes to directly for meeting metadata/history). This only
- * tracks who is currently connected to a meeting's signaling room, keyed
- * by Socket.IO room name = meetingId.
- *
- * Not persisted — a server restart drops all active rooms. Fine for MVP;
- * revisit if that becomes a real problem (Day 10 reconnection work).
+ * In-memory registry of who's connected to each meeting's signaling room —
+ * separate from the Firestore meetings collection. Not persisted; a restart drops all active rooms.
  */
 const rooms = new Map();
 
-// Day 10: last-touched timestamp per room, used only by `roomReaper.js`'s
-// defensive idle sweep — not part of the normal reactive join/leave/end
-// cleanup path, which already handles the common case.
+// Last-touched timestamp per room, used only by roomReaper.js's idle sweep.
 const lastActivityAt = new Map();
 
 function touch(meetingId) {
@@ -80,10 +72,8 @@ function getPeer(meetingId, peerId) {
 }
 
 /**
- * Merges a peer's mic/camera mute state into their stored peerInfo, so a
- * peer joining later sees the current state via `getPeers()` instead of
- * only finding out on the next toggle (see `signalingHandler.js`'s
- * `peer:muteState` handler).
+ * Merges a peer's mute state into their stored peerInfo, so a peer joining
+ * later sees current state via getPeers() instead of only the next toggle broadcast.
  */
 function setMuteState(meetingId, peerId, { isAudioMuted, isVideoMuted }) {
   const room = rooms.get(meetingId);

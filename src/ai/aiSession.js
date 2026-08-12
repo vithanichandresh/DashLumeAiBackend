@@ -1,30 +1,6 @@
 /**
- * Transcript accumulation, per meeting. **Revised**: a session now starts
- * automatically the moment the first peer joins the room
- * (`signalingHandler.js`'s `room:join`), not when "Add AI Assistant" is
- * toggled — transcription runs for the whole meeting regardless of any
- * toggle. Finalized Deepgram segments (see `stt/sttSession.js`) are
- * appended here as they arrive, with speaker attribution; the AI's own
- * chat replies are appended too (see `chatHandler.js`'s `respondAsAi`), so
- * the transcript/context window/post-call summary all reflect the full
- * conversation, not just human speech.
- *
- * `start()` is idempotent (repeat calls, e.g. on rejoin, keep the existing
- * transcript instead of wiping it), and the session is only cleared when
- * the room itself ends (`signalingHandler.js`'s `endCurrentRoom`/
- * `leaveCurrentRoom`).
- *
- * `hasSession()` no longer means "AI Assistant is toggled on" (it's true
- * for the whole meeting now) — that's tracked separately by
- * `setToggle`/`isToggleActive` below, used only for the "Add AI Assistant"
- * tile's own on/off UI state (`sttHandler.js`'s `ai:status`/`ai:status:query`).
- * Whether Gemini actually replies to a chat message is gated on an
- * "@dashLumeAI" mention (`chatHandler.js`), independent of both of these.
- *
- * In-memory only, same posture as `roomManager`/`sfuRoomState` — no
- * persistence yet. `contextManager.js` reads `getTranscript()` for its
- * rolling context window; `summaryGenerator.js` is where a final transcript
- * gets stored (Firestore).
+ * Per-meeting transcript accumulator: started idempotently at room:join,
+ * cleared only at room end — independent of the "Add AI Assistant" toggle tracked below. In-memory only, same posture as roomManager/sfuRoomState.
  */
 
 /** @type {Map<string, { startedAt: number, segments: Array<{peerId: string, displayName: string, text: string, at: number}> }>} */

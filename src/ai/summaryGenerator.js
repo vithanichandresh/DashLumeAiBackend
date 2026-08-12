@@ -2,9 +2,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const env = require('../config/env');
 
 /**
- * Day 19: post-call summary + action-item extraction (2026-08-10: also a
- * suggested meeting title). Runs once, over the *full* accumulated
- * transcript, at the moment a meeting ends.
+ * Post-call summary + action-item (and suggested title) extraction. Runs
+ * once, over the full accumulated transcript, when a meeting ends.
  */
 
 let genAI = null;

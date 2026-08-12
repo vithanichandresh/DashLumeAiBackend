@@ -2,10 +2,8 @@ const mediasoup = require('mediasoup');
 const env = require('../config/env');
 
 /**
- * One mediasoup Worker for the whole process (a native child process that
- * does the actual media routing). One worker is enough for MVP traffic —
- * scaling to multiple workers (one per CPU core, routers distributed across
- * them) is a real future step, not needed yet.
+ * One mediasoup Worker (native child process) for the whole app process —
+ * enough for MVP traffic; multiple workers per CPU core is a future scaling step.
  */
 let worker;
 

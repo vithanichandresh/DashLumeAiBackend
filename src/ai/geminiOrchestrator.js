@@ -3,21 +3,8 @@ const env = require('../config/env');
 const contextManager = require('./contextManager');
 
 /**
- * Day 17/18: prompt orchestration — one chat message in, one Gemini
- * Flash-Lite response out, grounded in the meeting's rolling transcript
- * context. Same model already proven reachable in the Day 1 spike
- * (`spikes/geminiSpike.js`, ~1.8s latency).
- *
- * Deliberately stateless beyond the transcript window — no separate
- * chat-with-AI conversation memory. No intent-classification step either:
- * per the Day 17 decision ("any chat message while AI active" triggers a
- * response, no @-mention/special syntax), a single general-purpose prompt
- * covers all of PROJECT.md's AI capabilities (answer questions, explain
- * concepts, translate, brainstorm) — Gemini itself infers which mode a
- * given message calls for from its wording, the same way a human assistant
- * would. This keeps the plumbing identical to Day 17; Day 18 only widens
- * the system prompt so the model doesn't stay narrowly framed as "answer
- * factual questions only."
+ * One chat message in, one Gemini Flash-Lite response out, grounded in the
+ * meeting's rolling transcript. Stateless beyond that window — no separate chat-with-AI memory, no intent-classification step.
  */
 
 let genAI = null;
@@ -53,14 +40,10 @@ function buildPrompt(roomId, message) {
 async function generateResponse(roomId, message) {
   const model = client().getGenerativeModel({
     model: 'gemini-flash-lite-latest',
-    // Lower than the API default (which skews toward more varied/creative
-    // output) — this is Q&A grounded in a real transcript, not creative
-    // writing, so favor consistent/factual answers over variety.
+    // Lower than the API default — this is transcript-grounded Q&A, not creative writing.
     generationConfig: { temperature: 0.3 },
     // Google Search grounding — verified via spikes/groundingSpike.js that
-    // this SDK/model forwards `tools` untouched to the REST API and it
-    // actually returns current data (e.g. real Flutter SDK version, current
-    // GST rate) instead of stale training-data answers.
+    // this SDK forwards `tools` untouched and returns current (non-stale) data.
     tools: [{ googleSearch: {} }],
   });
   const result = await model.generateContent(buildPrompt(roomId, message));
