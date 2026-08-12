@@ -10,25 +10,8 @@ const aiSession = require('../ai/aiSession');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 /**
- * Day 15 spike-sized STT capture pipeline, now feeding Day 16's transcript
- * accumulation (`ai/aiSession.js`). For a given mediasoup audio Producer,
- * this:
- *   1. Creates a `PlainTransport` on the room's Router and consumes the
- *      producer onto it — mediasoup's own documented "recording" pattern
- *      (same one mediasoup-demo uses), just forwarding raw RTP to a local
- *      port instead of to another WebRTC peer.
- *   2. Writes a minimal SDP file describing that RTP stream (payload type /
- *      clock rate read from the actual negotiated `consumer.rtpParameters`,
- *      not assumed statically — the Router doesn't pin a static payload
- *      type, see sfuRoomState.js's `mediaCodecs`).
- *   3. Spawns `ffmpeg` pointed at that SDP, decoding Opus -> raw PCM
- *      (16kHz mono s16le) on stdout.
- *   4. Streams that PCM into one Deepgram live-transcription WebSocket per
- *      producer. Finalized segments are appended to `aiSession` with
- *      speaker attribution (looked up once per capture, not per segment —
- *      display names don't change mid-call).
- *
- * Still no persistence, no context-window/Gemini wiring — that's Day 17+.
+ * STT capture pipeline: consumes one mediasoup audio Producer via a
+ * PlainTransport, decodes Opus->PCM through ffmpeg, and streams it to one Deepgram live-transcription session per producer.
  */
 
 const deepgram = new DeepgramClient({ apiKey: env.stt.deepgramApiKey });
@@ -36,11 +19,8 @@ const deepgram = new DeepgramClient({ apiKey: env.stt.deepgramApiKey });
 /** @type {Map<string, Map<string, { stop: () => void }>>} roomId -> (producerId -> session handle) */
 const activeRooms = new Map();
 
-// Set once from sttHandler.js's attachStt(io) — needed here to broadcast
-// finalized transcript segments live, not just accumulate them silently
-// in aiSession. Module-level rather than threaded through every function
-// call, matching this file's existing pattern of requiring sibling
-// modules directly instead of full dependency injection.
+// Set once from sttHandler.js's attachStt(io), so finalized segments can be
+// broadcast live instead of only accumulated silently in aiSession.
 let io = null;
 function setIo(socketIoInstance) {
   io = socketIoInstance;
@@ -69,17 +49,8 @@ function buildSdp({ port, payloadType, clockRate, channels }) {
 }
 
 /**
- * Starts capturing one audio producer. No-op (returns null) if the
- * room/producer no longer exists, OR if any step below fails — every
- * step from `createPlainTransport` through `waitForOpen` is a real
- * network/native call that can reject (Deepgram outage, port exhaustion,
- * mediasoup native error, etc.). Wrapped in one try/catch so a failure
- * here never propagates up into `startForRoom`/`handleNewProducer` — an
- * uncaught throw there would permanently mark the room as "active" in
- * `activeRooms` (set before this is ever called) with no working
- * sessions and no way to retry short of the room ending. Any transport
- * already created before the failure is explicitly closed instead of
- * left dangling.
+ * Starts capturing one audio producer; returns null on any failure (Deepgram
+ * outage, port exhaustion, mediasoup error) so callers never see an uncaught throw. Any transport already created is explicitly closed on failure.
  */
 async function startCapture(roomId, peerId, producerId) {
   const room = sfuRoomState.getRoom(roomId);
@@ -158,9 +129,7 @@ async function startCapture(roomId, peerId, producerId) {
       aiSession.addSegment(roomId, { peerId, displayName, text: transcript });
       io?.to(roomId).emit('transcript:segment', { peerId, displayName, text: transcript, at: Date.now() });
 
-      // Durable log, independent of the realtime broadcast above — same
-      // posture as chatHandler.js's message persistence: fire-and-forget,
-      // a write failure only logs and never blocks/breaks the live path.
+      // Durable log, fire-and-forget — same posture as chatHandler.js's message persistence.
       getFirestore()
         .collection('meetings')
         .doc(roomId)
@@ -172,10 +141,8 @@ async function startCapture(roomId, peerId, producerId) {
     connection.connect();
     await connection.waitForOpen();
 
-    // ffmpeg's stdout can still emit an already-buffered chunk asynchronously
-    // right after kill() — without this guard that chunk hits a closed
-    // Deepgram socket, throws inside the stream's 'data' handler, and (being
-    // uncaught) takes down the *entire* Node process, not just this session.
+    // ffmpeg's stdout can emit an already-buffered chunk after kill() — this
+    // guard stops it from hitting a closed Deepgram socket and crashing the process.
     let stopped = false;
     ffmpeg.stdout.on('data', (chunk) => {
       if (stopped) return;
@@ -220,11 +187,8 @@ async function startForRoom(roomId) {
 }
 
 /**
- * `stt:stop` (and room/peer teardown) — stops every active session for the
- * room, unconditionally. Always clears `roomWanters` too (even though normal
- * `unwantStt` calls already leave it empty by construction) so a room-end
- * teardown called directly (see signalingHandler.js) can't leave stale
- * wanter state behind for a later rejoin reusing the same roomId.
+ * Stops every active session for the room, unconditionally. Always clears
+ * roomWanters too, so a direct room-end teardown can't leave stale wanter state for a later rejoin.
  */
 function stopForRoom(roomId) {
   const sessions = activeRooms.get(roomId);
@@ -244,11 +208,8 @@ function isActiveForRoom(roomId) {
 const roomWanters = new Map();
 
 /**
- * A feature ('ai' or 'cc') declares it wants STT capture running for a
- * room. Actually starts capture only for the first wanter — a second
- * concurrent wanter just joins the existing capture (startForRoom is
- * itself idempotent via activeRooms.has(), but gating on the wanters set
- * here is what makes unwantStt's refcounting correct).
+ * A feature declares it wants STT capture running. Only the first wanter
+ * actually starts capture — gating on the wanters set here is what makes unwantStt's refcounting correct.
  */
 async function wantStt(roomId, source) {
   let wanters = roomWanters.get(roomId);
@@ -262,9 +223,8 @@ async function wantStt(roomId, source) {
 }
 
 /**
- * A feature declares it no longer wants STT capture. Only actually tears
- * down the pipeline once no feature wants it anymore — e.g. AI Assistant
- * turning off must not kill captions still relying on the same capture.
+ * A feature declares it no longer wants capture. Only tears the pipeline
+ * down once nobody wants it anymore — e.g. AI Assistant turning off must not kill captions.
  */
 function unwantStt(roomId, source) {
   const wanters = roomWanters.get(roomId);
@@ -291,9 +251,8 @@ function stopForPeer(roomId, producerId) {
 }
 
 /**
- * Called from sfuHandler.js right after a new producer is announced to the
- * room — only acts if STT capture is already active for that room (someone
- * joining mid-session should also get transcribed).
+ * Called right after a new producer is announced to the room — only acts if
+ * STT capture is already active for that room (mid-call joiners get transcribed too).
  */
 async function handleNewProducer(roomId, peerId, producerId, kind) {
   if (kind !== 'audio') return;

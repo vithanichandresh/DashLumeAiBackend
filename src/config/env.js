@@ -21,16 +21,12 @@ module.exports = {
   mediasoup: {
     minPort: parseInt(process.env.MEDIASOUP_MIN_PORT, 10) || 40000,
     maxPort: parseInt(process.env.MEDIASOUP_MAX_PORT, 10) || 40100,
-    // Same LAN-IP-vs-localhost lesson as the rest of this backend (see
-    // LESSONS.md) — a physical device can't reach 127.0.0.1 on the host,
-    // it needs the host's real LAN/public address here.
+    // A physical device can't reach 127.0.0.1 on the host — needs its real LAN/public address.
     announcedAddress: process.env.MEDIASOUP_ANNOUNCED_IP || '127.0.0.1',
   },
   stt: {
     deepgramApiKey: process.env.DEEPGRAM_API_KEY,
-    // Port range ffmpeg listens on for RTP forwarded from mediasoup's
-    // PlainTransport — distinct from MEDIASOUP_MIN_PORT/MAX_PORT above
-    // (that range is mediasoup's own WebRTC transport ports, this is ours).
+    // ffmpeg's RTP-from-mediasoup port range — distinct from MEDIASOUP_MIN/MAX_PORT above (that's mediasoup's own WebRTC ports).
     rtpMinPort: parseInt(process.env.STT_RTP_MIN_PORT, 10) || 30000,
     rtpMaxPort: parseInt(process.env.STT_RTP_MAX_PORT, 10) || 30100,
   },

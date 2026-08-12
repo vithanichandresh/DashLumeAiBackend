@@ -1,27 +1,10 @@
 const env = require('../config/env');
-const sfuRoomState = require('../sfu/sfuRoomState');
+const sfuRoomState = require('./sfuRoomState');
 const sttSession = require('../stt/sttSession');
 
 /**
- * mediasoup SFU signaling — replaces the mesh `signal` (offer/answer/
- * ice-candidate relay) event from signalingHandler.js. Presence
- * (`room:join`/`room:leave`/`peer:joined`/`peer:left`/disconnect) stays in
- * signalingHandler.js unchanged; this only adds the SFU-specific RPCs.
- *
- * All client->server calls use a Socket.IO ack callback (request/response),
- * since each one needs a direct reply — not a room broadcast:
- *
- *   "sfu:getRtpCapabilities"   ()                                  -> { rtpCapabilities }
- *   "sfu:createTransport"      { direction: 'send'|'recv' }        -> { id, iceParameters, iceCandidates, dtlsParameters }
- *   "sfu:connectTransport"     { transportId, dtlsParameters }     -> { connected: true }
- *   "sfu:produce"              { transportId, kind, rtpParameters }-> { id }  (also broadcasts "sfu:newProducer" to the room)
- *   "sfu:consume"              { producerId, rtpCapabilities }     -> { id, producerId, kind, rtpParameters }
- *   "sfu:resumeConsumer"       { producerId }                      -> { resumed: true }
- *   "sfu:getExistingProducers" ()                                  -> [{ peerId, producerId, kind }]
- *
- * Server -> room broadcasts (no ack):
- *   "sfu:newProducer"     { peerId, producerId, kind }
- *   "sfu:producerClosed"  { producerId }
+ * mediasoup SFU signaling RPCs (ack-style request/response) — presence stays
+ * in rooms/signalingHandler.js. Event/payload reference: BACKEND_ARCHITECTURE.md §8.
  */
 function attachSfu(io) {
   io.on('connection', (socket) => {
