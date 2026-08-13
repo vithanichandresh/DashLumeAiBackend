@@ -1,16 +1,45 @@
-# CallMate AI Backend
+# DashLume AI Backend
 
-Express REST API + Socket.IO WebRTC signaling server. See `../PROJECT.md` and `../app_plan/CallMate_AI_Development_Plan.md` for the full architecture context (Days 2, 3, 6-8, 11, 15-19 of the plan all depend on this).
+Node.js backend for **DashLume AI** — Express REST API + Socket.IO signaling +
+a [mediasoup](https://mediasoup.org/) WebRTC SFU for group video calls, with a
+built-in AI meeting assistant (live transcription via Deepgram, summaries and
+Q&A via Gemini).
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## Features
+
+- **WebRTC video calls** — mediasoup SFU (`src/sfu/`) handles multi-party
+  audio/video routing; Socket.IO (`src/rooms/`) handles signaling.
+- **Live transcription** — audio is forwarded from mediasoup to ffmpeg over
+  RTP and streamed to Deepgram (`src/stt/`).
+- **AI meeting assistant** — Gemini-powered summaries and in-call Q&A grounded
+  in the live transcript (`src/ai/`).
+- **In-call chat** (`src/sockets/chatHandler.js`).
+- **Firebase Auth** — REST routes and the Socket.IO handshake are protected by
+  Firebase ID token verification (`src/middleware/authMiddleware.js`).
 
 ## Setup
 
 ```bash
-cd backend
 npm install
 cp .env.example .env
 ```
 
-Then get a Firebase service account key: Firebase console → Project Settings → Service Accounts → **Generate new private key** (project `callmetaai`). Save the downloaded JSON as `backend/firebase-service-account.json` (already gitignored — never commit it).
+Fill in `.env`:
+- **Firebase service account** — Firebase console → Project Settings →
+  Service Accounts → **Generate new private key** (project `callmetaai`).
+  Save the JSON as `firebase-service-account.json` in the repo root (already
+  gitignored — never commit it).
+- **TURN** — get free credentials from [ExpressTurn](https://www.expressturn.com/).
+- **Gemini** — get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+- **Deepgram** — get a key at [console.deepgram.com](https://console.deepgram.com/).
+- **`MEDIASOUP_ANNOUNCED_IP`** — the address clients dial to reach the media
+  server. Use your machine's real LAN IP for physical devices (`127.0.0.1`
+  only works for the iOS Simulator), or the server's public IP in production.
+
+Requires **Node.js ≥22** and `ffmpeg` on `PATH` (`brew install ffmpeg`) for
+the STT audio pipeline.
 
 ```bash
 npm run dev   # nodemon, restarts on file change
@@ -18,22 +47,46 @@ npm run dev   # nodemon, restarts on file change
 npm start
 ```
 
-Server listens on `PORT` from `.env` (default 4000) — matches the Flutter app's `env/.env.dev` (`API_BASE_URL=http://localhost:4000/api`, `SOCKET_URL=http://localhost:4000`).
+Server listens on `PORT` from `.env` (default `4000`).
 
 ## What's here
 
 - `src/server.js` — entry point, wires Express + Socket.IO together
 - `src/config/` — env loading, Firebase Admin init
-- `src/middleware/authMiddleware.js` — Firebase ID token verification, shared by REST routes and the Socket.IO handshake
-- `src/routes/health.js` — `GET /health`, public
-- `src/routes/iceServers.js` — `GET /api/ice-servers`, protected, returns STUN/TURN config for the client's `RTCPeerConnection`
-- `src/rooms/signalingHandler.js` — WebRTC signaling protocol (room join/leave, offer/answer/ICE relay). Event names documented at the top of that file, aligned with `lib/core/network/socket_service.dart`'s existing `joinRoom`/`leaveRoom` helpers.
-- `src/rooms/roomManager.js` — in-memory registry of who's connected to each meeting's signaling room. Not persisted — a restart drops active rooms.
+- `src/middleware/authMiddleware.js` — Firebase ID token verification, shared
+  by REST routes and the Socket.IO handshake
+- `src/routes/` — `GET /health` (public), `GET /api/ice-servers` (protected,
+  returns STUN/TURN config for the client's `RTCPeerConnection`)
+- `src/rooms/` — signaling protocol (join/leave, room state) and in-memory
+  room registry
+- `src/sfu/` — mediasoup worker/router setup and the SFU's Socket.IO handlers
+  (transports, producers, consumers)
+- `src/stt/` — RTP capture from mediasoup → ffmpeg → Deepgram live
+  transcription
+- `src/ai/` — Gemini session orchestration, context management, and summary
+  generation
+- `src/sockets/` — chat and STT-related Socket.IO handlers
 
-## Not done yet
+## Deployment
 
-- **TURN vendor not chosen** — `.env.example`'s `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL` are blank. Only Google's public STUN works right now; calls behind restrictive NATs will fail until a TURN provider is set up (self-hosted coturn or managed).
-- **No meeting-room REST endpoints** — meeting metadata (title, host, etc.) is written directly to Firestore by the Flutter client (see `lib/features/meeting`); this backend only tracks *active signaling connections*, keyed by the same meeting ID/code. Intentional — avoids duplicating Firestore as a second source of truth.
-- **Days 6-8 (actual WebRTC peer connection code) not built** — this is signaling only. The Flutter side doesn't send/receive `signal` events yet; `features/calling` still targets the old 100ms SDK (see root `TODO.md`/`LESSONS.md`).
-- **`socket_service.dart`'s `joinRoom(roomId)` doesn't send `displayName` yet** — the signaling handler defaults it to `'Guest'` if omitted. Small gap for whoever picks up Day 6.
-- **8 moderate npm audit findings**, all transitive through `firebase-admin`'s Google Cloud client deps (uuid buffer-bounds issue). Fix requires bumping `firebase-admin` to a new major version (12→14) — not done without checking for breaking API changes first.
+`.github/workflows/deploy.yml` auto-deploys to a remote server on every push
+to `main`: SSHes in via `appleboy/ssh-action`, resets to the latest `main`,
+reinstalls dependencies with `npm ci`, and restarts the app under `pm2`.
+
+The server runs the app persistently via `pm2` + a `systemd` unit
+(`pm2 startup`), so it survives crashes and reboots.
+
+## Known limitations
+
+- **In-memory room/signaling state** — not persisted; a server restart drops
+  active rooms and calls.
+- **No meeting-metadata REST endpoints** — meeting metadata (title, host,
+  etc.) is written directly to Firestore by the Flutter client; this backend
+  only tracks *active* signaling/SFU connections.
+- **Some npm audit findings**, mostly transitive through `firebase-admin`'s
+  Google Cloud client deps — run `npm audit` for current status before
+  upgrading.
+
+## License
+
+[MIT](LICENSE)
