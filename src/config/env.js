@@ -33,4 +33,5 @@ module.exports = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
   },
+  firebaseWebApiKey: process.env.FIREBASE_WEB_API_KEY,
 };

@@ -19,7 +19,7 @@ const env = require('../config/env');
 const { initFirebaseAdmin } = require('../config/firebaseAdmin');
 const { getAuth } = require('firebase-admin/auth');
 
-const FIREBASE_WEB_API_KEY = 'REDACTED'; // lib/firebase_options.dart, project-level key
+const FIREBASE_WEB_API_KEY = env.firebaseWebApiKey; // lib/firebase_options.dart, project-level key
 const TEST_UID = 'stt-debug-script';
 
 function signInWithCustomToken(customToken) {
