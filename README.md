@@ -28,7 +28,7 @@ cp .env.example .env
 
 Fill in `.env`:
 - **Firebase service account** — Firebase console → Project Settings →
-  Service Accounts → **Generate new private key** (project `callmetaai`).
+  Service Accounts → **Generate new private key**.
   Save the JSON as `firebase-service-account.json` in the repo root (already
   gitignored — never commit it).
 - **TURN** — get free credentials from [ExpressTurn](https://www.expressturn.com/).

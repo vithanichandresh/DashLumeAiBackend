@@ -10,7 +10,7 @@ function loadServiceAccount() {
     throw new Error(
       `Firebase service account file not found at ${resolvedPath}.\n` +
         'Generate one in the Firebase console: Project Settings > Service Accounts > ' +
-        'Generate new private key (project "callmetaai"), save it at that path, and ' +
+        'Generate new private key, save it at that path, and ' +
         'set FIREBASE_SERVICE_ACCOUNT_PATH in backend/.env if you used a different path.'
     );
   }
