@@ -56,6 +56,12 @@ function getPeers(meetingId, excludePeerId) {
     .map(([peerId, info]) => ({ peerId, ...info }));
 }
 
+/** Whether the meeting currently has anyone connected — used to derive "is this live" for the anonymous preview API. */
+function hasActivePeers(meetingId) {
+  const room = rooms.get(meetingId);
+  return !!room && room.size > 0;
+}
+
 function findRoomForPeer(peerId) {
   for (const [meetingId, room] of rooms.entries()) {
     if (room.has(peerId)) return meetingId;
@@ -88,6 +94,7 @@ module.exports = {
   closeRoom,
   getPeers,
   getPeer,
+  hasActivePeers,
   setMuteState,
   findRoomForPeer,
   getAllRoomIds,

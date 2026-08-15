@@ -56,7 +56,8 @@ Server listens on `PORT` from `.env` (default `4000`).
 - `src/middleware/authMiddleware.js` — Firebase ID token verification, shared
   by REST routes and the Socket.IO handshake
 - `src/routes/` — `GET /health` (public), `GET /api/ice-servers` (protected,
-  returns STUN/TURN config for the client's `RTCPeerConnection`)
+  returns STUN/TURN config for the client's `RTCPeerConnection`),
+  `GET /meeting/preview/:code` (public, anonymous read-only meeting preview)
 - `src/rooms/` — signaling protocol (join/leave, room state) and in-memory
   room registry
 - `src/sfu/` — mediasoup worker/router setup and the SFU's Socket.IO handlers
@@ -80,9 +81,10 @@ The server runs the app persistently via `pm2` + a `systemd` unit
 
 - **In-memory room/signaling state** — not persisted; a server restart drops
   active rooms and calls.
-- **No meeting-metadata REST endpoints** — meeting metadata (title, host,
-  etc.) is written directly to Firestore by the Flutter client; this backend
-  only tracks *active* signaling/SFU connections.
+- **No meeting-metadata REST endpoints beyond the read-only preview** —
+  meeting metadata (title, host, etc.) is written directly to Firestore by
+  the Flutter client; `GET /meeting/preview/:code` only reads it back for
+  anonymous viewers, it never writes.
 - **Some npm audit findings**, mostly transitive through `firebase-admin`'s
   Google Cloud client deps — run `npm audit` for current status before
   upgrading.

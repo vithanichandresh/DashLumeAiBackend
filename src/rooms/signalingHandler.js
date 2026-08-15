@@ -12,22 +12,46 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
  */
 function attachSignaling(io) {
   io.use(async (socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) {
-      return next(new Error('Missing auth token'));
+    const { token, previewCode } = socket.handshake.auth || {};
+
+    if (token) {
+      try {
+        const decoded = await verifyIdToken(token);
+        socket.data.uid = decoded.uid;
+        socket.data.role = 'participant';
+        return next();
+      } catch (error) {
+        return next(new Error('Invalid or expired token'));
+      }
     }
 
-    try {
-      const decoded = await verifyIdToken(token);
-      socket.data.uid = decoded.uid;
-      next();
-    } catch (error) {
-      next(new Error('Invalid or expired token'));
+    // Anonymous read-only preview viewer — no Firebase check at all, pinned
+    // to a single room so it can't be reused to watch/join anything else.
+    if (previewCode) {
+      socket.data.role = 'viewer';
+      socket.data.previewRoomId = String(previewCode).trim().toUpperCase();
+      return next();
     }
+
+    next(new Error('Missing auth token'));
   });
 
   io.on('connection', (socket) => {
+    // Read-only counterpart to room:join below — never touches roomManager/STT/AI
+    // session, so a viewer never appears as a real participant to anyone.
+    socket.on('preview:join', (_data, callback) => {
+      if (socket.data.role !== 'viewer') return callback?.({ error: 'Not authorized' });
+
+      const roomId = socket.data.previewRoomId;
+      if (!roomManager.hasActivePeers(roomId)) return callback?.({ error: 'Meeting is not live' });
+
+      socket.join(roomId);
+      socket.data.roomId = roomId;
+      callback?.({ joined: true, existingProducers: sfuRoomState.getOtherProducers(roomId, socket.id) });
+    });
+
     socket.on('room:join', ({ roomId, displayName, profileImageUrl }) => {
+      if (socket.data.role === 'viewer') return;
       if (!roomId) return;
 
       const peerInfo = {
@@ -58,6 +82,7 @@ function attachSignaling(io) {
     });
 
     socket.on('peer:muteState', ({ isAudioMuted, isVideoMuted }) => {
+      if (socket.data.role === 'viewer') return;
       const roomId = socket.data.roomId;
       if (!roomId) return;
 
@@ -74,6 +99,7 @@ function attachSignaling(io) {
     });
 
     socket.on('room:end', () => {
+      if (socket.data.role === 'viewer') return;
       endCurrentRoom(io, socket);
     });
 
@@ -120,6 +146,17 @@ async function finalizeMeetingSummary(roomId) {
 async function leaveCurrentRoom(io, socket) {
   const roomId = socket.data.roomId;
   if (!roomId) return;
+
+  // A viewer was never added to roomManager/STT/AI session — just tear down
+  // its own SFU consumer state, skip the rest of the real-participant teardown.
+  if (socket.data.role === 'viewer') {
+    await sfuRoomState.removePeer(roomId, socket.id);
+    socket.leave(roomId);
+    if (socket.data.roomId === roomId) {
+      socket.data.roomId = null;
+    }
+    return;
+  }
 
   roomManager.leaveRoom(roomId, socket.id);
 

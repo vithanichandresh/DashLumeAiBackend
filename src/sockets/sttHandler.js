@@ -11,6 +11,7 @@ function attachStt(io) {
   io.on('connection', (socket) => {
     socket.on('stt:start', async (_data, callback) => {
       try {
+        if (socket.data.role === 'viewer') return callback?.({ error: 'Not authorized' });
         const roomId = socket.data.roomId;
         if (!roomId) return callback?.({ error: 'Not in a room' });
 
@@ -26,6 +27,7 @@ function attachStt(io) {
     });
 
     socket.on('stt:stop', (_data, callback) => {
+      if (socket.data.role === 'viewer') return callback?.({ error: 'Not authorized' });
       const roomId = socket.data.roomId;
       if (!roomId) return callback?.({ error: 'Not in a room' });
 
@@ -42,6 +44,7 @@ function attachStt(io) {
 
     socket.on('cc:start', async (_data, callback) => {
       try {
+        if (socket.data.role === 'viewer') return callback?.({ error: 'Not authorized' });
         const roomId = socket.data.roomId;
         if (!roomId) return callback?.({ error: 'Not in a room' });
 
@@ -54,6 +57,7 @@ function attachStt(io) {
     });
 
     socket.on('cc:stop', (_data, callback) => {
+      if (socket.data.role === 'viewer') return callback?.({ error: 'Not authorized' });
       const roomId = socket.data.roomId;
       if (!roomId) return callback?.({ error: 'Not in a room' });
 

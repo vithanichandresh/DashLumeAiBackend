@@ -22,6 +22,10 @@ function attachSfu(io) {
 
     socket.on('sfu:createTransport', async ({ direction }, callback) => {
       try {
+        if (direction === 'send' && socket.data.role === 'viewer') {
+          return callback({ error: 'Viewers cannot publish media' });
+        }
+
         const roomId = socket.data.roomId;
         const room = sfuRoomState.getRoom(roomId);
         if (!room) return callback({ error: 'Room not found — call sfu:getRtpCapabilities first' });
@@ -67,6 +71,10 @@ function attachSfu(io) {
 
     socket.on('sfu:produce', async ({ transportId, kind, rtpParameters }, callback) => {
       try {
+        if (socket.data.role === 'viewer') {
+          return callback({ error: 'Viewers cannot publish media' });
+        }
+
         const roomId = socket.data.roomId;
         const peer = sfuRoomState.getOrCreatePeerState(roomId, socket.id);
         if (!peer.sendTransport || peer.sendTransport.id !== transportId) {

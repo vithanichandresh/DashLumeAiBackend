@@ -432,10 +432,26 @@ room; `⇄` = client calls with an ack callback (request/response style).
 |---|---|---|
 | `GET /health` | none | liveness check, returns `{status: "ok"}` |
 | `GET /api/ice-servers` | `requireAuth` (Bearer Firebase ID token) | returns STUN/TURN list for the client's `RTCPeerConnection` config |
+| `GET /meeting/preview/:code` | none | anonymous, read-only meeting lookup for the web preview page — title, host name, live status, ICE servers |
 
-Both REST auth and Socket.IO handshake auth funnel through the same
-`verifyIdToken()` in `authMiddleware.js` — one token-verification path for
-both transports.
+Both authenticated REST auth and Socket.IO handshake auth funnel through the
+same `verifyIdToken()` in `authMiddleware.js` — one token-verification path
+for both transports. `GET /meeting/preview/:code` is the one exception: it
+never checks Firebase, by design.
+
+### Anonymous preview viewers (Socket.IO)
+
+The Socket.IO handshake (`rooms/signalingHandler.js`) accepts a second,
+unauthenticated auth mode: `socket.handshake.auth.previewCode` instead of
+`auth.token`. This tags the socket `socket.data.role = 'viewer'` (vs. the
+normal `'participant'`) and pins it to that one room. Viewers get a parallel
+`preview:join` event (instead of `room:join`) that never touches
+`roomManager`/STT/AI session — they're invisible to real participants and
+don't show up in presence. `sfuHandler.js` rejects `sfu:createTransport`
+(send direction) and `sfu:produce` for `role === 'viewer'`, so a preview
+socket can consume every existing producer but can never publish its own
+audio/video. `chatHandler.js` and `sttHandler.js` reject their mutating
+events the same way — viewers can watch, not interact.
 
 ---
 
