@@ -8,6 +8,7 @@ const { initFirebaseAdmin } = require('./config/firebaseAdmin');
 const { initMediasoupWorker } = require('./sfu/mediasoupWorker');
 const healthRoutes = require('./routes/health');
 const iceServersRoutes = require('./routes/iceServers');
+const meetingPreviewRoutes = require('./routes/meetingPreview');
 const { attachSignaling } = require('./rooms/signalingHandler');
 const { attachChat } = require('./sockets/chatHandler');
 const { attachSfu } = require('./sfu/sfuHandler');
@@ -29,6 +30,7 @@ async function start() {
 
   app.use('/health', healthRoutes);
   app.use('/api/ice-servers', iceServersRoutes);
+  app.use('/meeting/preview', meetingPreviewRoutes);
 
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, { cors: { origin: '*' } });

@@ -17,6 +17,7 @@ const AI_MENTION_REGEX = /@dashlumeai/i;
 function attachChat(io) {
   io.on('connection', (socket) => {
     socket.on('chat:message', ({ text }) => {
+      if (socket.data.role === 'viewer') return;
       const roomId = socket.data.roomId;
       if (!roomId || !text || !text.trim()) return;
 
